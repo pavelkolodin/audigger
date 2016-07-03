@@ -1,0 +1,14 @@
+Source: audigger
+Section: unknown
+Priority: extra
+Maintainer: Pavel Kolodin <pavelkolodin@gmail.com>
+Build-Depends: libboost1.52-dev
+Standards-Version: 1.0.0
+Homepage: http://audigger.ru/
+
+Package: audigger
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Audio analyzing and editing tool.
+ Audio analyzing and editing tool with advanced text-labeling features and fast sonogram computation.
+

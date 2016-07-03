@@ -1,0 +1,41 @@
+ <!DOCTYPE RCC><RCC version="1.0">
+ 
+ <qresource>
+ 	<file>images/menu-3bars-24x24.png</file>
+ 	<file>images/add-24x24.png</file>
+ 	<file>images/remove-16x16.png</file>
+ 	<file>images/mark-interval-knob-16x8.png</file>
+ 	
+ 	<file>images/tools/separator-16x24.png</file>
+ 	<file>images/tools/copy-24x24.png</file>
+ 	<file>images/tools/open-24x24.png</file>
+    <file>images/tools/info-24x24.png</file>
+    <file>images/tools/insert-24x24.png</file>
+    <file>images/tools/new-24x24.png</file>
+    <file>images/tools/paste-24x24.png</file>
+    <file>images/tools/remove-24x24.png</file>
+	<file>images/tools/save-24x24.png</file>
+	<file>images/tools/stop-24x24.png</file>
+	<file>images/tools/play-24x24.png</file>
+	<file>images/tools/hand-24x24.png</file>
+	<file>images/tools/select-time-24x24.png</file>
+	<file>images/tools/select-both-24x24.png</file>
+	<file>images/tools/band-pass-24x24.png</file> 
+	<file>images/tools/band-pass-zero-24x24.png</file>
+	<file>images/tools/band-suppress-24x24.png</file>
+	<file>images/tools/pen-green-visualpharm-24x24.png</file>
+	<file>images/tools/eraser-24x24.png</file>
+	<file>images/tools/timestep-100x24.png</file>
+	<file>images/tools/cursor-sync-24x24.png</file>
+
+	
+    <file>images/close-bold-sharp-8x8-14x14.png</file>
+    <file>images/circle-d93b3b-14x14.png</file>
+
+	<file>images/anchor/anchor-14x14.png</file>
+	<file>images/anchor/anchor-off-14x14.png</file>
+
+	
+ </qresource>
+ 
+ </RCC>

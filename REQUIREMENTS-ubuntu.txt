@@ -1,0 +1,11 @@
+
+apt-get -y install g++
+apt-get -y install libclalsadrv-dev
+apt-get -y install libsndfile-dev
+#apt-get -y install libqt4-dev
+apt-get install qtbase5-dev
+
+
+# TODO:
+# Why CMAKE don't search libsndfile?
+

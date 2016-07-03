@@ -1,0 +1,60 @@
+#!/usr/bin/make -f
+
+
+#BUILD_DIR = $(CURDIR)/debian/audigger_build
+BUILD_DIR = /tmp/audigger_deb_build/
+
+config.status: configure
+
+configure: configure-stamp
+
+configure-stamp:
+	dh_testdir
+	mkdir -p $(BUILD_DIR)
+	cd $(BUILD_DIR) && cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(CURDIR)/debian/audigger/usr $(CURDIR)
+	touch configure-stamp
+
+
+build: build-stamp
+
+build-stamp: configure-stamp
+	dh_testdir
+	cd $(BUILD_DIR) && make -j5
+	touch $@
+
+clean:
+	dh_testdir
+	dh_testroot
+	rm -f build-stamp configure-stamp
+	rm -rf $(BUILD_DIR)
+	dh_clean
+
+install: build
+	dh_testdir
+	dh_testroot
+	dh_clean -k
+	dh_installdirs
+	cd $(BUILD_DIR) && make install
+
+binary-indep: build install
+binary-arch: build install
+	dh_testdir
+	dh_testroot
+	dh_installchangelogs
+	dh_installdocs
+	dh_installexamples
+	dh_installman
+	dh_link
+	dh_strip
+	dh_compress
+	dh_fixperms
+	dh_installdeb
+	dh_shlibdeps
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
+
+binary: binary-indep binary-arch
+
+.PHONY: build clean binary-indep binary-arch binary install configure
+

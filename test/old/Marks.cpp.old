@@ -1,0 +1,303 @@
+/*
+ *  pavelkolodin@gmail.com
+ */
+
+#include <fir/debug.h>
+#include <iostream>
+
+#include <pugixml.hpp>
+#include <fstream>
+#include <cstring>	// strcmp
+#include <sstream>	// std::stringstream
+#include <cstdlib>	// atoi
+
+#include <fir/string.h>
+#include "Marks.h"
+
+// XML
+//
+#define XML_TAG_TRACKS "tracks"
+#define XML_TAG_TRACK "tr"
+#define XML_TAG_MARK "m"
+#define XML_ATTR_ID "id"
+#define XML_ATTR_BEGIN "b"
+#define XML_ATTR_END "L"
+#define MARK_NEXT_ID_INIT 1
+
+Marks::Marks ( )
+	: m_next_id( MARK_NEXT_ID_INIT )
+{
+}
+
+Marks::~Marks ( )
+{
+}
+
+bool Marks::SaveXML (const char* _filename )
+{
+	if ( NULL == _filename || 0 == _filename[0] )
+		return false;
+
+    pugi::xml_document	doc;
+	pugi::xml_node		xmlnode = doc.append_child(pugi::node_declaration);
+	xmlnode.append_attribute( "version" ) = "1.0";
+	xmlnode.append_attribute( "encoding" ) = "utf-8";
+
+    pugi::xml_node node_tracks;
+    node_tracks = doc.append_child( pugi::node_element );
+	node_tracks.set_name( XML_TAG_TRACKS );
+
+	VectorTracks::iterator it_l, ite_l;
+	MapMarks::iterator it_m, ite_m;
+
+	// Iterate tracks.
+	it_l = m_marks_begin.begin();
+	ite_l = m_marks_begin.end();
+	for ( int i = 0; it_l != ite_l; ++it_l, ++i )
+	{
+		pugi::xml_node node_lr = node_tracks.append_child( pugi::node_element );
+		node_lr.set_name( XML_TAG_TRACK );
+
+		//node_lr.append_attribute( XML_ATTR_ID ) = i;
+		//node_lr.append_attribute( "name" ) = "";
+
+		it_m = (*it_l)->begin();
+		ite_m = (*it_l)->end();
+		for ( ; it_m != ite_m; ++it_m )
+		{
+			if ( ! it_m->second->m_valid )
+				continue;
+
+			pugi::xml_node node_mark = node_lr.append_child( pugi::node_element );
+			node_mark.set_name( XML_TAG_MARK );
+			//node_mark.append_attribute( XML_ATTR_ID ) = it_m->second->m_id;
+			node_mark.append_attribute( XML_ATTR_BEGIN ) = it_m->second->m_begin;
+			node_mark.append_attribute( XML_ATTR_END ) = it_m->second->m_len;
+
+			node_mark.append_child( pugi::node_pcdata ).set_value( it_m->second->m_text.c_str() );
+		}
+	}
+
+	std::fstream _ostream;
+	_ostream.open( _filename, std::ios_base::out | std::ios_base::binary );
+	if ( _ostream.good() )
+	{
+		doc.save( _ostream, "\t", pugi::format_default, pugi::encoding_utf8 );
+		_ostream.close();
+		m_filename_XML = _filename;
+		return true;
+	}
+
+	return false;
+}
+
+bool Marks::SaveXML()
+{
+	LOGCOUT( "Marks::SaveXML(), " << m_filename_XML );
+	return this->SaveXML( m_filename_XML.c_str() );
+}
+
+bool Marks::LoadXML (const char* _filename )
+{
+	if ( NULL == _filename || 0 == _filename[0] )
+	{
+		LOGERROR ( "NULL == _filename || 0 == _filename[0]" )
+		return false;
+	}
+
+    pugi::xml_document doc;
+    /// load_file returns a struct "xml_parse_result" but it has "operator bool()".
+    pugi::xml_parse_result ldres = doc.load_file( _filename );
+
+    if (ldres.status != pugi::status_ok )
+    {
+    	LOGERROR( "ldres.status != pugi::status_ok" )
+    	return false;
+    }
+
+    m_filename_XML = _filename;
+
+    // Erase everything:
+    _clear();
+
+    std::stringstream SS; // used to convert strings to numbers.
+    unsigned mark_begin = 0;
+    unsigned mark_end = 0;
+
+    pugi::xml_node node_tracks = doc.child( XML_TAG_TRACKS );
+    if ( node_tracks.empty() )
+    {
+    	return false;
+    }
+
+    // Tracks:
+    pugi::xml_node node_tr;
+    for (node_tr = node_tracks.first_child(); node_tr; node_tr = node_tr.next_sibling())
+    {
+        if ( 0 != fir::strcmp(node_tr.name(), XML_TAG_TRACK ))
+        {
+        	LOGCOUT ("Skip: " << node_tr.name() );
+            continue;
+        }
+
+        unsigned track_id = addTrack();
+        // Marks in current track:
+        pugi::xml_node node_mark;
+        for ( node_mark = node_tr.first_child(); node_mark; node_mark = node_mark.next_sibling())
+        {
+            if ( 0 != fir::strcmp(node_mark.name(), XML_TAG_MARK ))
+            {
+            	LOGCOUT( "Skip: " << node_mark.name() );
+                continue;
+            }
+
+            const char *mark_begin_str = node_mark.attribute( XML_ATTR_BEGIN ).value();
+            const char *mark_end_str = node_mark.attribute( XML_ATTR_END ).value();
+            const char *mark_value = node_mark.first_child().value();
+            if ( ! mark_begin_str || ! mark_end_str || ! mark_value )
+                continue;
+
+            mark_begin = ::atoi( mark_begin_str );
+            mark_end = ::atoi( mark_end_str );
+
+            addMark ( track_id, mark_begin, mark_end, mark_value );
+        } // marks in track
+    } // tracks
+
+
+	return true;
+}
+
+unsigned Marks::addTrack()
+{
+	MapMarks *m = new MapMarks();
+	m_marks_begin.push_back( m );
+
+	return (unsigned)(m_marks_begin.size() - 1);
+}
+
+Mark* Marks::addMark(unsigned _track, unsigned long _begin, unsigned long _len, const char *_text)
+{
+	if ( m_marks_begin.size() <= _track )
+		return NULL;
+
+	// Allocate memory for new Mark.
+	m_marks_mem.push_back( Mark() );
+	Mark &m = m_marks_mem.back();
+	m.m_valid = true;
+
+	m.m_id = m_next_id;
+	++ m_next_id;
+
+	m.m_begin = _begin;
+	m.m_len = _len;
+
+	if ( _text )
+		m.m_text = _text;
+
+	(*m_marks_begin[_track])[ _begin ] = &m;
+	m_marks_id[ m.m_id ] = &m;
+
+	return &m;
+}
+
+bool Marks::moveMark(unsigned _track, unsigned _oldbegin, unsigned long _begin, unsigned long _len)
+{
+	MapMarks::iterator it;
+	it = m_marks_begin[_track] -> find( _oldbegin );
+	if ( m_marks_begin[_track] -> end() != it )
+	{
+		if ( it->second->m_valid )
+		{
+			Mark* m = it->second;
+			m->m_begin = _begin;
+			m->m_len = _len;
+
+			// Move:
+			m_marks_begin[_track] -> erase( it );
+			(*m_marks_begin[_track])[ _begin ] = m;
+		}
+	}
+
+	return true;
+}
+
+void Marks::delMark( unsigned _id )
+{
+	MapMarks::iterator it;
+	it = m_marks_id.find( _id );
+	if ( m_marks_id.end() != it )
+	{
+		it->second->m_valid = false;
+	}
+}
+
+void Marks::delTrack(unsigned _track)
+{
+	size_t len = m_marks_begin.size();
+	if ( len <= _track )
+		return;
+
+	m_marks_begin.erase(m_marks_begin.begin() + _track);
+}
+
+size_t Marks::sizeTracks()
+{
+	return m_marks_begin.size();
+}
+
+size_t Marks::loadMarks(unsigned _track, unsigned long _from, unsigned long _to, Mark** _mem, size_t _limit)
+{
+	size_t ret = 0;
+	if ( ! _limit )
+	{
+		LOGERROR( "Marks::loadMarks(), _limit == 0");
+		return ret;
+	}
+
+	if ( m_marks_begin.size() <= _track )
+		return ret;
+
+	MapMarks::iterator it, ite;
+	ite = m_marks_begin[_track]->end();
+	it = m_marks_begin[_track]->lower_bound( _from );
+	if ( ite == it )
+		return ret;
+
+	for (	int i = 0;
+			it != ite && _limit && it->first <= _to;
+			++it )
+	{
+
+		if ( it->second->m_valid )
+		{
+			_mem[i] = it->second;
+			-- _limit;
+			++ i;
+			++ ret;
+		}
+	}
+	return ret;
+}
+
+//
+// P R I V A T E
+//
+
+void Marks::_clear()
+{
+	// Kill marks inself, memory: AUTO
+	m_marks_mem.clear();
+
+	// Kill ID, memory: AUTO
+	m_marks_id.clear();
+
+	// Kill tracks, memory: HEAP
+	int vlen = m_marks_begin.size();
+	for ( int i = 0; i < vlen; ++i )
+		delete m_marks_begin[i];
+
+	m_marks_begin.clear();
+	m_next_id = MARK_NEXT_ID_INIT;
+}
+

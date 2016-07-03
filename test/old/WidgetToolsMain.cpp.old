@@ -1,0 +1,69 @@
+/*
+ *  pavelkolodin@gmail.com
+ */
+
+#include "WidgetToolsMain.h"
+
+WidgetToolsMain :: WidgetToolsMain (QWidget *_par)
+: QWidget( _par )
+{
+
+	setupUi(this);
+
+	pushButton_new			->setIcon(QIcon(":/images/new-24x24.png"));
+	pushButton_new			->setText("");
+	pushButton_new			->setIconSize( QSize(24, 24));
+
+	pushButton_openMedia	->setIcon(QIcon(":/images/folder-24x24.png"));
+	pushButton_openMedia	->setText("");
+	pushButton_openMedia	->setIconSize( QSize(24, 24));
+
+	pushButton_saveMedia	->setIcon(QIcon(":/images/save2-24x24.png"));
+	pushButton_saveMedia	->setText("");
+	pushButton_saveMedia	->setIconSize( QSize(24, 24));
+
+	pushButton_closeMedia	->setIcon(QIcon(":/images/remove-24x24.png"));
+	pushButton_closeMedia	->setText("");
+	pushButton_closeMedia	->setIconSize( QSize(24, 24));
+
+	pushButton_copy			->setIcon(QIcon(":/images/copy-24x24.png"));
+	pushButton_copy			->setText("");
+	pushButton_copy			->setIconSize( QSize(24, 24));
+
+	pushButton_paste		->setIcon(QIcon(":/images/paste-24x24.png"));
+	pushButton_paste		->setText("");
+	pushButton_paste		->setIconSize( QSize(24, 24));
+
+	pushButton_insert		->setIcon(QIcon(":/images/insert-24x24.png"));
+	pushButton_insert		->setText("");
+	pushButton_insert		->setIconSize( QSize(24, 24));
+	pushButton_insert		->setChecked( true );
+
+
+//	pushButton_addlabeltrack->setIcon(QIcon(":/images/add-24x24.png"));
+//	pushButton_addlabeltrack->setText("");
+//	pushButton_addlabeltrack->setIconSize( QSize(24, 24));
+//
+//	pushButton_openXML		->setIcon(QIcon(":/images/folder-label-24x24.png"));
+//	pushButton_openXML		->setText("");
+//	pushButton_openXML		->setIconSize( QSize(24, 24));
+//
+//	pushButton_saveXML		->setIcon(QIcon(":/images/save2-label-24x24.png"));
+//	pushButton_saveXML		->setText("");
+//	pushButton_saveXML		->setIconSize( QSize(24, 24));
+
+	pushButton_sndStart		->setIcon(QIcon(":/images/play-24x24.png"));
+	pushButton_sndStart		->setText("");
+	pushButton_sndStart		->setIconSize( QSize(24, 24));
+
+//	pushButton_info			->setIcon(QIcon(":/images/info-24x24.png"));
+//	pushButton_info			->setText("");
+//	pushButton_info			->setIconSize( QSize(24, 24));
+
+}
+
+
+WidgetToolsMain :: ~WidgetToolsMain ( )
+{
+
+}

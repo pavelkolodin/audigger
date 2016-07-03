@@ -1,0 +1,108 @@
+/*
+ *  pavelkolodin@gmail.com
+ */
+
+#ifndef _WidgetTrack_H_
+#define _WidgetTrack_H_
+
+#include <QtGui>
+#include "AudioFile.h"
+#include "IMarksOperator.h"
+#include "WidgetSound.h"
+
+class Controller;
+class WidgetTextMarks;
+
+class WidgetTrack : public QWidget, public IMarksOperator
+{
+	Q_OBJECT
+public:
+	WidgetTrack( QWidget *_parent );
+	void clear();
+	void refresh();
+	void refreshSelTime();
+
+	void setTrackId( unsigned _track_id );
+	unsigned getTrackId() { return m_track_id; }
+
+	void setFFTParams( unsigned _fft_res, unsigned _fft_step );
+	void setMediaInfo( const MediaInfo& _mi );
+
+	void setController( Controller* _ctrl );
+	Controller* getController() { return m_ctrl; }
+	void getFFTParams(unsigned *_window, unsigned *_step);
+	unsigned getZoom();
+
+	// Pass selection parameters to Processor.
+	bool transferSel();
+
+	//
+	// Inherited from IMarksOperator:
+	//
+	virtual void	marksChanged( );
+	virtual void	setCursorPos(size_t _pos); // lines
+	virtual size_t	getCursorPos( );
+	virtual void	setTimeConst(float _c);
+	virtual void	setOffset(size_t _value);
+	virtual size_t	getOffset( );
+	virtual size_t	showCursorPos(size_t _pos);
+	virtual size_t	showCursorBegin( );
+	virtual size_t	showCursorEnd( );
+	virtual size_t	moveCursorPgUp( );
+	virtual size_t	moveCursorPgDown( );
+	virtual size_t	moveCursorUp( );
+	virtual size_t	moveCursorDown( );
+	virtual bool getSelTime(size_t *_start_line, size_t *_len_lines);
+	virtual bool getSelTimeCurr(size_t *_start_line, size_t *_len_lines);
+	virtual bool getSelFreq(size_t *_start_bin, size_t *_len_bins);
+
+	//
+	// Pen
+	//
+	void setMode( WidgetSound::Mode );
+	//void setPenEnabled( bool _enabled );
+	void setPenValue( float _value );
+	void getNextPenMask( float** _ret_data, size_t *_start_line, size_t *_ret_lines );
+
+protected:
+	void resizeEvent(QResizeEvent *_event);
+
+public slots:
+	void slotScrollVerticalChanged(int _value);
+
+	void slotCopy();
+	void slotPaste(bool _insert);
+	void slotDelete();
+	void slotCut();
+	void slotVisualsChanged(); // connected to m_widget_sound->signalVisualsChanged();
+
+signals:
+	void signalVisualsChanged(WidgetTrack *_myself);
+
+public:
+	unsigned	m_track_id;
+	unsigned	m_fft_win;
+	unsigned	m_fft_step;
+
+	Controller	*m_ctrl;
+	QScrollBar	*m_scrollbar;
+	QSplitter	*m_splitter_main;
+	WidgetTextMarks *m_widget_textmarks;
+	WidgetSound	*m_widget_sound;
+
+	QString m_filename_XML;
+	MediaInfo	m_mediainfo;
+	unsigned	m_windowlen;
+	unsigned	m_stepdiv;
+	size_t		m_offset;
+	float		m_timeconst;
+
+	bool		m_used;
+
+private:
+	WidgetTrack();
+};
+
+
+#endif
+

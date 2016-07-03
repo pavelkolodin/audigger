@@ -1,0 +1,82 @@
+/*
+ *  pavelkolodin@gmail.com
+ */
+
+#include "WidgetToolsPaint.h"
+
+WidgetToolsPaint :: WidgetToolsPaint ( QWidget *_par )
+: QWidget( _par )
+{
+	setupUi(this);
+
+	pushButton_drag			->setIcon(QIcon(":/images/hand-24x24.png"));
+	pushButton_drag			->setText("");
+	pushButton_drag			->setCheckable( true );
+
+	pushButton_select_time			->setIcon(QIcon(":/images/select-time-24x24.png"));
+	pushButton_select_time			->setText("");
+	pushButton_select_time			->setCheckable( true );
+
+	pushButton_select_both			->setIcon(QIcon(":/images/select-both-24x24.png"));
+	pushButton_select_both			->setText("");
+	pushButton_select_both			->setCheckable( true );
+
+	pushButton_band_pass			->setIcon(QIcon(":/images/band-pass-24x24.png"));
+	pushButton_band_pass			->setText("");
+	pushButton_band_pass			->setCheckable( true );
+
+	pushButton_band_pass_zero			->setIcon(QIcon(":/images/band-pass-zero-24x24.png"));
+	pushButton_band_pass_zero			->setText("");
+	pushButton_band_pass_zero			->setCheckable( true );
+
+	pushButton_band_suppress			->setIcon(QIcon(":/images/band-suppress-24x24.png"));
+	pushButton_band_suppress			->setText("");
+	pushButton_band_suppress			->setCheckable( true );
+
+	pushButton_F1->setCheckable( true );
+	pushButton_F2->setCheckable( true );
+	pushButton_F3->setCheckable( true );
+	pushButton_F4->setCheckable( true );
+	// // // // // //
+
+	pushButton_pen			->setIcon(QIcon(":/images/pen-green-visualpharm-24x24.png"));
+	pushButton_pen			->setText("");
+	pushButton_pen			->setCheckable( false );
+
+	pushButton_eraser			->setIcon(QIcon(":/images/eraser-24x24.png"));
+	pushButton_eraser			->setText("");
+	pushButton_eraser			->setCheckable( false );
+
+	m_qbg = new QButtonGroup( this );
+	m_qbg->setExclusive( true );
+	m_qbg->addButton( pushButton_drag );
+	m_qbg->addButton( pushButton_select_time );
+	m_qbg->addButton( pushButton_select_both );
+	m_qbg->addButton( pushButton_pen );
+	m_qbg->addButton( pushButton_eraser );
+
+
+	m_band = new QButtonGroup( this );
+	m_band->setExclusive( true );
+	m_band->addButton( pushButton_band_pass );
+	m_band->addButton( pushButton_band_pass_zero );
+	m_band->addButton( pushButton_band_suppress );
+	m_band->addButton( pushButton_F1 );
+	m_band->addButton( pushButton_F2 );
+	m_band->addButton( pushButton_F3 );
+	m_band->addButton( pushButton_F4 );
+
+	// "Hand"
+	pushButton_drag->setChecked( true );
+
+	// Band pass.
+	pushButton_band_pass->setChecked( true );
+}
+
+
+WidgetToolsPaint :: ~WidgetToolsPaint ( )
+{
+
+}
+
+

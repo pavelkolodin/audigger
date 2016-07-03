@@ -1,0 +1,446 @@
+/*
+ *  pavelkolodin@gmail.com
+ */
+
+#include "WidgetTrack.h"
+#include "WidgetSound.h"
+#include "WidgetTextMarks.h"
+#include "Controller.h"
+#include "Processor.h"
+#include "defaults.h"
+#include <fir/debug.h>
+
+WidgetTrack::WidgetTrack(QWidget *_par)
+: QWidget( _par )
+, m_track_id(0)
+, m_fft_win(0)
+, m_fft_step(0)
+, m_ctrl(NULL)
+, m_scrollbar (NULL)
+, m_splitter_main (NULL)
+, m_widget_textmarks(NULL)
+, m_widget_sound(NULL)
+, m_offset(0)
+, m_timeconst(0)
+, m_used(false)
+{
+	m_scrollbar = new QScrollBar(Qt::Vertical, this);
+	m_scrollbar -> setRange(0, 0);
+	//m_scrollbar -> show();
+
+	//
+	// Main Splitter
+	//
+
+	m_widget_textmarks = new WidgetTextMarks();
+	m_widget_textmarks->setOwner( this );
+
+
+	m_widget_sound = new WidgetSound();
+	m_widget_sound->setOwner( this );
+
+	//m_widget_sound->setFocus();
+
+	m_splitter_main = new QSplitter( this ); //centralWidget() );
+
+	//QPalette pal_splitter = m_splitter_main->palette();
+	//pal_splitter.setColor(QPalette::Window, QColor( 0xaa, 0xaa, 0xaa, 0xff) );
+	//m_splitter_main->setPalette( pal_splitter );
+	m_splitter_main->addWidget( m_widget_textmarks );
+	m_splitter_main->addWidget( m_widget_sound );
+	m_splitter_main->move(0, 0);
+	//m_splitter_main -> show();
+
+
+//	QSplitterHandle *handle = m_splitter_main->handle( 1 );
+//	QVBoxLayout *layout = new QVBoxLayout(handle);
+//	layout->setSpacing(1);
+//	layout->setMargin(0);
+//
+//	QFrame *line = new QFrame(handle);
+//	line->setFrameShape(QFrame::VLine);
+//	line->setFrameShadow(QFrame::Sunken);
+//	line->setLineWidth( 2 );
+//	layout->addWidget(line);
+
+	connect (m_scrollbar, SIGNAL(valueChanged(int)), this, SLOT(slotScrollVerticalChanged(int)) );
+	connect (m_widget_sound, SIGNAL(signalVisualsChanged()), this, SLOT(slotVisualsChanged()) );
+}
+
+void WidgetTrack::clear()
+{
+	m_widget_sound->clear();
+	m_scrollbar->setRange(0, 0);
+	m_scrollbar->setValue(0);
+	//this->setOffset(0);
+	this->showCursorPos(0);
+
+	m_widget_textmarks->resize(64, 64);
+
+}
+
+void WidgetTrack::refresh()
+{
+	this->setMediaInfo( m_ctrl->getProcessor()->getAudioTrack(m_track_id)->getMediaInfo() );
+	m_widget_sound->refresh();
+	m_widget_textmarks->marksChanged();
+}
+
+void WidgetTrack::refreshSelTime()
+{
+	m_widget_sound->refreshSelTime();
+}
+
+void WidgetTrack::setTrackId( unsigned _track_id )
+{
+	m_track_id = _track_id;
+	m_widget_sound->setTrackId( _track_id );
+	m_widget_textmarks->setTrackId( _track_id );
+}
+
+void WidgetTrack::setFFTParams( unsigned _fft_res, unsigned _fft_step )
+{
+	bool changed = (m_fft_win != _fft_res || m_fft_step != _fft_step );
+	m_fft_win = _fft_res;
+	m_fft_step = _fft_step;
+
+	m_widget_sound -> setFFTParams( _fft_res, _fft_step );
+
+	// Recalculate other parameters:
+	if ( ! m_mediainfo.m_frames )
+		return;
+
+	size_t track_heignt = 1 + (m_mediainfo.m_frames  - m_fft_win)/m_fft_step;
+	// How many milliseconds the step is?
+	float timeconst_old = m_timeconst;
+	float timeconst = ((float) m_fft_step )/(float)(m_mediainfo.m_rate/1000.0f);
+	setTimeConst ( timeconst );
+	m_widget_sound->setCanvasSize( m_fft_win/2, track_heignt);
+	m_scrollbar->setRange(0, (50 + m_mediainfo.m_frames/m_fft_step) );
+
+
+	// Keep old visual potision
+	if ( timeconst_old && timeconst && timeconst_old != timeconst)
+	{
+		size_t offset_new = ((float)m_offset) * (timeconst_old / timeconst);
+		size_t cursor_new = ((float)m_widget_sound->getCursorPos()) * (timeconst_old / timeconst);
+		LOGVAR2( m_offset, offset_new )
+		setOffset( offset_new );
+		showCursorPos ( cursor_new );
+	}
+	else
+		if ( changed )
+			m_widget_sound->touch(); // TODO: why we need this method?
+}
+
+void WidgetTrack::setMediaInfo( const MediaInfo& _mi )
+{
+	LOGCOUT( "WidgetTrack::setMediaInfo()" )
+	LOGVAR2( m_mediainfo.m_frames, _mi.m_frames )
+
+	if ( ! m_fft_win || ! m_fft_step )
+		return; // please set FFT parameters first!
+
+	m_mediainfo = _mi;
+	//if ( ! m_mediainfo.m_frames )
+	//	return;
+
+	// Recalculate other parameters:
+
+	size_t track_height = 0;
+	float timeconst = 0;
+
+	if ( m_mediainfo.m_frames >= m_fft_win)
+		track_height = 1 + (m_mediainfo.m_frames  - m_fft_win)/m_fft_step;
+
+	// How many milliseconds the step is?
+	if ( m_mediainfo.m_rate >= 8000 )
+		timeconst = ((float) m_fft_step )/(float)(m_mediainfo.m_rate/1000.0f);
+
+	setTimeConst ( timeconst );
+	m_widget_sound->setCanvasSize( m_fft_win/2, track_height);
+
+	m_scrollbar->setRange(0, (10 + m_mediainfo.m_frames/m_fft_step) );
+
+	//LOGVAR1(timeconst)
+}
+
+void WidgetTrack::setController( Controller* _ctrl )
+{
+	m_ctrl = _ctrl;
+	m_widget_sound->setProcessor( _ctrl->getProcessor() );
+}
+
+void WidgetTrack::getFFTParams(unsigned *_window, unsigned *_step)
+{
+	*_window = m_fft_win;
+	*_step = m_fft_step;
+}
+
+unsigned WidgetTrack::getZoom()
+{
+	return 1;
+}
+
+bool WidgetTrack::transferSel()
+{
+	if ( ! m_ctrl )
+		return false;
+
+	size_t seltime_from = 0, seltime_len = 0;
+	size_t selfreq_from = 0, selfreq_len = 0;
+
+	if ( ! m_widget_sound->getSelTime( &seltime_from, &seltime_len) )
+		return false;
+
+	if ( ! seltime_len )
+		return false;
+
+	if ( ! 	m_widget_sound->getSelFreq( &selfreq_from, &selfreq_len ) )
+		return false;
+
+	if ( ! selfreq_len )
+		return false;
+
+	size_t seltime_from_frames = seltime_from * m_fft_step;
+	size_t seltime_len_frames = m_fft_win + (seltime_len - 1) * m_fft_step;
+
+	if ( ! m_ctrl->getProcessor()->setSelTime(m_track_id, seltime_from_frames, seltime_len_frames ) )
+		return false;
+
+	if ( ! m_ctrl->getProcessor()->setSelFreq(m_track_id, selfreq_from, selfreq_len ) )
+		return false;
+
+	LOGVAR4(seltime_from_frames, seltime_len_frames, selfreq_from, selfreq_len )
+	return true;
+}
+
+
+void WidgetTrack::marksChanged( )
+{
+	m_widget_textmarks->marksChanged();
+}
+
+void WidgetTrack::setCursorPos(size_t _pos) // lines
+{
+    m_widget_sound->setCursorPos( _pos );
+    m_widget_textmarks->setCursorPos( _pos );
+}
+
+size_t WidgetTrack::getCursorPos()
+{
+	return m_widget_sound->getCursorPos();
+}
+
+void WidgetTrack::setOffset(size_t _value)
+{
+	if ( _value < 0 )
+		return;
+
+	m_offset = _value;
+	m_widget_sound->setOffset(_value);
+	m_widget_textmarks->setOffset(_value);
+}
+
+size_t WidgetTrack::getOffset()
+{
+	return m_offset;
+}
+
+void WidgetTrack::setTimeConst(float _c)
+{
+	m_timeconst = _c;
+	m_widget_textmarks->setTimeConst(_c);
+}
+
+//void WidgetTrack::setCursorPos(size_t _pos) // lines
+//{
+//	m_widget_sound->setCursorPos( _pos );
+//	m_widget_textmarks->setCursorPos( _pos );
+//
+////	std::stringstream SS;
+////	float ms = ((float)_pos) * m_timeconst;
+////	printSecondsAsTime( SS, ms );
+////  m_label_position->setText( SS.str().c_str() );
+//}
+
+size_t WidgetTrack::showCursorPos(size_t _pos)
+{
+	size_t offset = m_widget_sound->showCursorPos( _pos );
+
+	// Move scrollbar:
+	m_scrollbar -> setValue( offset );
+
+	// setValue() will do this:
+	//m_offset = offset;
+	//m_widget_textmarks->setOffset( offset );
+
+
+
+//	std::stringstream SS;
+//	float ms = ((float)_pos) * m_timeconst;
+//	printSecondsAsTime( SS, ms );
+//  m_label_position->setText( SS.str().c_str() );
+
+	return offset;
+}
+
+size_t WidgetTrack::showCursorBegin( )
+{
+	size_t offset = m_widget_sound->showCursorBegin();
+	m_scrollbar -> setValue( offset );
+	return offset;
+}
+
+size_t WidgetTrack::showCursorEnd( )
+{
+	size_t offset = m_widget_sound->showCursorEnd();
+	m_scrollbar -> setValue( offset );
+	return offset;
+}
+
+size_t	WidgetTrack::moveCursorPgUp( )
+{
+	size_t offset = m_widget_sound->moveCursorPgUp();
+	m_scrollbar -> setValue( offset );
+	return offset;
+}
+size_t	WidgetTrack::moveCursorPgDown( )
+{
+	size_t offset = m_widget_sound->moveCursorPgDown();
+	m_scrollbar -> setValue( offset );
+	return offset;
+}
+size_t	WidgetTrack::moveCursorUp( )
+{
+	size_t offset = m_widget_sound->moveCursorUp();
+	m_scrollbar -> setValue( offset );
+	return offset;
+}
+size_t	WidgetTrack::moveCursorDown( )
+{
+	size_t offset = m_widget_sound->moveCursorDown();
+	m_scrollbar -> setValue( offset );
+	return offset;
+}
+
+bool WidgetTrack::getSelTime(size_t *_from_line, size_t *_len)
+{
+	return m_widget_sound->getSelTime( _from_line, _len );
+}
+
+bool WidgetTrack::getSelTimeCurr(size_t *_from_line, size_t *_len)
+{
+	return m_widget_sound->getSelTimeCurr( _from_line, _len );
+}
+
+bool WidgetTrack::getSelFreq(size_t *_start_bin, size_t *_len_bins)
+{
+	return m_widget_sound->getSelFreq( _start_bin, _len_bins );
+}
+
+//void WidgetTrack::setPenEnabled( bool _enabled )
+//{
+//	m_widget_sound->setModePen(_enabled);
+//}
+
+void WidgetTrack::setMode( WidgetSound::Mode _mode )
+{
+	m_widget_sound->setMode( _mode );
+}
+
+void WidgetTrack::setPenValue( float _value )
+{
+	m_widget_sound->setPenValue( _value );
+}
+
+void WidgetTrack::getNextPenMask( float** _ret_data, size_t *_start_line, size_t *_ret_lines )
+{
+	m_widget_sound->getNextPenMask( _ret_data, _start_line, _ret_lines );
+}
+
+//
+// P R O T E C T E D
+//
+
+void WidgetTrack::resizeEvent(QResizeEvent *_event)
+{
+	m_splitter_main->resize( _event->size().width() - 30, _event->size().height() );
+	m_scrollbar->move( _event->size().width() - 25, 0 );
+	m_scrollbar->resize( 20, _event->size().height() );
+}
+
+
+//
+// S L O T S
+//
+void WidgetTrack::slotScrollVerticalChanged(int _value)
+{
+	setOffset( _value );
+	this->update();
+}
+
+
+void WidgetTrack::slotCopy()
+{
+	if ( ! m_ctrl )
+		return;
+
+	if ( ! this->transferSel() )
+		return;
+
+	m_ctrl->getProcessor()->copy( m_track_id );
+}
+
+void WidgetTrack::slotPaste(bool _insert)
+{
+	if ( ! m_ctrl )
+		return;
+
+	size_t from, len, dst_pos;
+
+	// Do not paste if selection is active.
+	// Don't know why :)
+	if ( m_widget_sound->getSelTime(&from, &len) )
+	{
+		LOGCOUT("getSelectionLines == TRUE")
+		return;
+	}
+
+	if ( m_ctrl->getProcessor()->paste(m_track_id, getCursorPos() * m_fft_step, _insert) )
+	{
+		m_widget_sound->clearSel();
+		this->refresh();
+	}
+}
+
+void WidgetTrack::slotDelete()
+{
+	if ( ! m_ctrl )
+		return;
+
+	if ( ! this->transferSel() )
+	{
+		m_widget_textmarks->slotDelete(); // :)
+		return;
+	}
+
+	if ( m_ctrl->getProcessor()->erase( m_track_id ) )
+	{
+		//this->setMediaInfo( m_ctrl->getProcessor()->getAudioTrack(m_track_id)->getMediaInfo() );
+		m_widget_sound->clearSel();
+		this->refresh();
+	}
+}
+
+void WidgetTrack::slotCut()
+{
+	slotCopy();
+	slotDelete();
+}
+
+void WidgetTrack::slotVisualsChanged()
+{
+	signalVisualsChanged( this );
+}
+

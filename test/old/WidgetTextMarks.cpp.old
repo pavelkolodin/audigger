@@ -1,0 +1,716 @@
+/*
+ *  pavelkolodin@gmail.com
+ */
+
+#include <iostream>
+#include <QtGui>
+#include <sstream>
+#include <ctime>
+#include "WidgetTextMarks.h"
+
+#include "MarksLn.h"
+#include "Controller.h"
+#include "Processor.h"
+#include "WidgetTrack.h"
+
+#include <fir/debug.h>
+
+// How many marks we are ready to get per single call to "MarksLn" object.
+#define MARKS_MEM_MAX 256
+#define MARK_TEXT_MARGIN_LEFT 16
+#define MARK_TEXT_MARGIN_RIGHT 1
+#define START_DRAGGING_THR 5
+
+void QTextEditEnter::keyPressEvent(QKeyEvent *_event)
+{
+	if ( _event->key() == Qt::Key_Return || _event->key() == Qt::Key_Escape || _event->key() == Qt::Key_F2)
+	{
+		signalPressEnter();
+		return;
+	}
+	else
+		QTextEdit::keyPressEvent( _event );
+}
+
+//
+// P U B L I C
+//
+
+WidgetTextTrack::WidgetTextTrack()
+	: m_owner(NULL)
+	, m_marks_mem(new Mark*[ MARKS_MEM_MAX ])
+	, m_id_media( 0 )
+	, m_id_marks ( 0 )
+	, m_offset ( 0 )
+	, m_timeconst ( 0.0 )
+	, m_mark_edited ( 0 )
+	, m_mark_selected(NULL)
+	, m_mark_pressedswitcher(NULL)
+	, m_mark_dragging(false)
+	, m_pixmap_point(0)
+	, m_pixmap_interval(0)
+{
+	// Receive mouseMoveEvent():
+	setMouseTracking(true);
+
+	m_text_edit = new QTextEditEnter( this );
+	m_text_edit->hide();
+
+	this->setMinimumHeight(0);
+	this->setMinimumWidth(0);
+
+	this->resize(100, 100);
+
+	m_pixmap_point = new QPixmap(16, 16 );
+	m_pixmap_interval = new QPixmap(16, 16 );
+
+	m_pixmap_point->convertFromImage( QImage( ":/images/mark-point-16x16.png" ));
+	m_pixmap_interval->convertFromImage( QImage( ":/images/mark-interval-16x16.png" ));
+
+
+	connect (m_text_edit, SIGNAL(signalPressEnter()), this, SLOT(slotEditPressEnter()));
+}
+
+WidgetTextTrack::~WidgetTextTrack()
+{
+	size_t len = m_marks_gui_mem.size();
+	for ( size_t i = 0; i < len; ++i )
+	{
+		delete m_marks_gui_mem[i];
+	}
+
+	delete[] m_marks_mem;
+}
+
+void WidgetTextTrack::_freeAllMarkGUI()
+{
+	size_t len = m_marks_gui_mem.size();
+	for ( size_t i = 0; i < len; ++i )
+	{
+		m_marks_gui_mem[i]->m_used = false;
+	}
+	//m_marks_gui.clear();
+}
+
+MarkGUI* WidgetTextTrack::_allocMarkGUI()
+{
+	size_t len = m_marks_gui_mem.size();
+	for ( size_t i = 0; i < len; ++i )
+	{
+		if ( ! m_marks_gui_mem[i]->m_used )
+		{
+			m_marks_gui_mem[i]->m_used = true;
+			return m_marks_gui_mem[i];
+		}
+	}
+
+	MarkGUI *ret = new MarkGUI();
+	ret->m_used = true;
+	m_marks_gui_mem.push_back( ret );
+	return ret;
+}
+
+void WidgetTextTrack::setTrackId(unsigned _track_id)
+{
+	m_id_media = _track_id;
+
+	// TODO: Repaint the widget using new track_id?
+}
+
+void WidgetTextTrack::fixSize(MarkGUI *_mg)
+{
+
+//  "QPainter::begin: Widget painting can only begin as a result of a paintEvent"
+//	QPainter painter (this);
+//	QLabel lab;
+//	lab.setText( QString::fromUtf8( _mg.m_mark->m_text.c_str() ) );
+//	lab.setFont( painter.font() );
+//	lab.setWordWrap( true );
+//	_mg.m_size = lab.heightForWidth( width() - 2 );
+
+	_mg->m_size = 0;
+}
+
+void WidgetTextTrack::setOffset(size_t _off)
+{
+	if ( ! m_timeconst )
+		return;
+
+	m_offset = _off;
+
+	// Re-read marks.
+	unsigned ms_from = _off * m_timeconst;
+	unsigned ms_to = (_off + height()) * m_timeconst;
+
+	size_t marks_num = m_owner->getController()->getProcessor()->getMarks(m_id_media)->loadMarks(m_id_marks, ms_from, ms_to, m_marks_mem, MARKS_MEM_MAX);
+
+	//m_marks_gui.clear();
+	_freeAllMarkGUI();
+	for ( size_t i = 0; i < marks_num; ++i )
+	{
+		MarkGUI *mg = _allocMarkGUI();
+		mg->m_mark = m_marks_mem[i];
+		mg->m_coord = (m_marks_mem[i]->m_pos / m_timeconst) - m_offset;
+
+//		m_marks_gui.push_back(MarkGUI());
+//		MarkGUI &mg = m_marks_gui.back();
+//		mg.m_mark = m_marks_mem[i];
+//		mg.m_coord = m_marks_mem[i]->m_pos / m_timeconst;
+//		mg.m_coord -= m_offset;
+
+		//mg.m_size = m_marks_mem[i]->m_len / m_timeconst;
+		fixSize( mg );
+
+		if ( m_new_mark_id == m_marks_mem[i] )
+		{
+			_startEditingMark( mg );
+			m_new_mark_id = NULL;
+		}
+	}
+}
+
+
+void WidgetTextTrack::marksChanged( )
+{
+	this->setOffset( m_offset ); // get marks.
+	this->update();
+}
+
+//void WidgetTextTrack::setCursorPos(size_t _pos ) { }
+
+
+
+
+//
+// PROTECTED
+//
+void WidgetTextTrack::resizeEvent(QResizeEvent *_event)
+{
+	QWidget::resizeEvent( _event );
+
+	size_t len = m_marks_gui_mem.size();
+	for ( size_t i = 0; i < len && m_marks_gui_mem[i]->m_used; ++i )
+	{
+		fixSize( m_marks_gui_mem[i] );
+	}
+}
+
+#define SIZE_MIN_MARK 16
+
+void WidgetTextTrack::paintEvent(QPaintEvent *_event)
+{
+	QPainter pnt( this );
+	pnt.setPen( QColor( 0x00, 0x00, 0x00, 0xff ));
+	QColor color_background;
+	
+	unsigned w = width();
+	unsigned h = height();
+
+	color_background.setRgb( 0xff, 0xff, 0xff, 0xff );
+
+	pnt.fillRect( 0, 0, w-1, h-1, color_background );
+
+	size_t len = m_marks_gui_mem.size();
+	for ( size_t i = 0; i < len && m_marks_gui_mem[i]->m_used; ++i )
+	{
+		// Line:
+		pnt.drawLine( 0, m_marks_gui_mem[i]->m_coord, w, m_marks_gui_mem[i]->m_coord );
+
+		QString mark_label= QString().fromUtf8( m_marks_gui_mem[i]->m_mark->m_text.c_str() );
+
+		if ( 0 == m_marks_gui_mem[i]->m_size )
+		{
+			// Size is not set? Fix size!
+
+			QFontMetrics fm( pnt.font() );
+			QRect r = fm.boundingRect( 0, 0, w - (MARK_TEXT_MARGIN_LEFT+MARK_TEXT_MARGIN_RIGHT), 1, Qt::AlignLeft | Qt::TextWordWrap, mark_label );
+			m_marks_gui_mem[i]->m_size = r.height();
+			if ( m_marks_gui_mem[i]->m_size < SIZE_MIN_MARK )
+				m_marks_gui_mem[i]->m_size = SIZE_MIN_MARK;
+		}
+
+
+
+//		// background:
+//		if ( m_mark_selected == m_marks_gui_mem[i] )
+//		{
+//			// 003399
+//			color_background.setRgb( 0x00, 0x33, 0x99, 0xff );
+//			pnt.setPen( QColor( 0xff, 0xff, 0xff, 0xff ));
+//		}
+//		else
+//		{
+//			color_background.setRgb( 0xfa, 0xf0, 0xe6, 0xff );
+//		}
+
+		color_background.setRgb( 0xfa, 0xf0, 0xe6, 0xff );
+		pnt.fillRect( 0, m_marks_gui_mem[i]->m_coord+1, w-1, m_marks_gui_mem[i]->m_size, color_background );
+
+		if ( m_mark_selected == m_marks_gui_mem[i] )
+		{
+			color_background.setRgb( 0x00, 0x33, 0x99, 0xff );
+			pnt.fillRect( MARK_TEXT_MARGIN_LEFT, m_marks_gui_mem[i]->m_coord+1, w - MARK_TEXT_MARGIN_LEFT, m_marks_gui_mem[i]->m_size, color_background );
+			pnt.setPen( QColor( 0xff, 0xff, 0xff, 0xff ));
+		}
+
+
+		pnt.drawText( MARK_TEXT_MARGIN_LEFT, m_marks_gui_mem[i]->m_coord+1, w-(MARK_TEXT_MARGIN_LEFT+MARK_TEXT_MARGIN_RIGHT), m_marks_gui_mem[i]->m_size, Qt::TextWordWrap | Qt::AlignLeft,  mark_label);
+
+		if ( m_mark_selected == m_marks_gui_mem[i] )
+			pnt.setPen( QColor( 0x00, 0x00, 0x00, 0xff ));
+		// Arrow:
+		//pnt.drawLine( w-5, m_marks_gui_mem[i]->m_coord - 2, w, m_marks_gui_mem[i]->m_coord );
+		//pnt.drawLine( w-5, m_marks_gui_mem[i]->m_coord + 2, w, m_marks_gui_mem[i]->m_coord );
+
+		if ( m_marks_gui_mem[i]->m_mark->m_interval )
+			pnt.drawPixmap(0, m_marks_gui_mem[i]->m_coord, *m_pixmap_interval);
+		else
+			pnt.drawPixmap(0, m_marks_gui_mem[i]->m_coord, *m_pixmap_point);
+	}
+
+}
+
+void WidgetTextTrack::mousePressEvent ( QMouseEvent * _event )
+{
+	MarkGUI *mark_hover = __detectMarkHover(1, _event->y());
+	m_mark_dragging = false;
+	m_mark_pressedswitcher = NULL;
+	m_mouse_press_coord = _event->y();
+
+	if ( ! mark_hover )
+		m_mark_selected = NULL;
+
+	// When user edit the mark, the QTextBox widget is displayed.
+	// That witget eat all the clicks on it, so we don't see them.
+	// So if here, user clicked OUTSIDE the QTextBox, so we can close it!
+	if ( m_mark_edited && m_text_edit->isVisible() )
+	{
+		slotEditPressEnter();
+	}
+
+
+
+
+	if ( Qt::LeftButton == _event->button() )
+	{
+		if ( mark_hover )
+		{
+			// Text clicked?
+			if ( _event->x() > MARK_TEXT_MARGIN_LEFT )
+			{
+				m_mark_selected = mark_hover;
+			}
+			else
+				m_mark_pressedswitcher = mark_hover;
+		}
+	}
+	else
+	{
+		if ( mark_hover )
+		{
+			m_mark_selected = mark_hover;
+
+			QMenu *men = new QMenu( this );
+			//men->move( _event->x(), _event->y() );
+			//men->resize(100, 400);
+			QAction *act_del = men->addAction("Delete Mark");
+			act_del->setIcon( QIcon(":/images/remove-16x16.png") );
+			connect(act_del, SIGNAL(triggered()), this, SLOT(slotMarkDelete()));
+			men->addAction("Close menu");
+			men->popup(QWidget::mapToGlobal(QPoint(_event->x(), _event->y())));
+
+			// No need disconnect, because men->popup DOESN'T BLOCK!
+			//disconnect(act_del, SIGNAL(triggered()), this, SLOT(slotMarkDelete()));
+		}
+		else
+		{
+			QMenu *men = new QMenu( this );
+			//men->move( _event->x(), _event->y() );
+			//men->resize(100, 400);
+			QAction *act_del = men->addAction("Delete Track");
+			act_del->setIcon( QIcon(":/images/remove-16x16.png") );
+			connect(act_del, SIGNAL(triggered()), this, SLOT(slotLayerDelete()));
+
+			men->addAction("Close menu");
+			men->popup(QWidget::mapToGlobal(QPoint(_event->x(), _event->y())));
+			//delete men;
+		}
+	}
+
+
+	if ( m_mark_selected )
+	{
+		m_mark_pressoffset = _event->y() - m_mark_selected->m_coord;
+		m_owner -> setCursorPos( m_offset + m_mark_selected->m_coord ); // set cursor to a position
+	}
+
+	this->update();
+}
+
+
+void WidgetTextTrack::mouseMoveEvent ( QMouseEvent * _event )
+{
+	if ( ! m_owner )
+		return;
+
+	if ( m_mark_dragging )
+	{
+		int dragcoord = (_event->y() - m_mark_pressoffset);
+		// Limit dragging range!
+		if ( dragcoord < 0 )
+			return; // TODO: move canvas up
+
+		if ( dragcoord >= height())
+			return; // TODO: move canvas down
+
+		m_owner -> showCursorPos(m_offset + dragcoord);
+
+		// move mark visually
+		m_mark_selected->m_coord = dragcoord;
+		this->update();
+	}
+	else
+	{
+		m_owner -> setCursorPos( m_offset + _event->pos().y() );
+
+		if ( m_mark_selected && (! m_mark_pressedswitcher ) && (_event->buttons() & Qt::LeftButton) )
+			if ( std::abs( (long)(_event->y() - m_mouse_press_coord) ) >= START_DRAGGING_THR )
+				m_mark_dragging = true;
+	}
+}
+
+void WidgetTextTrack::mouseReleaseEvent( QMouseEvent *_event )
+{
+	if ( m_mark_pressedswitcher && ! m_mark_dragging )
+	{
+		MarkGUI *mark_hover = __detectMarkHover(1, _event->y());
+		if ( mark_hover == m_mark_pressedswitcher )
+			// Button clicked.
+			m_mark_pressedswitcher->m_mark->m_interval = ! m_mark_pressedswitcher->m_mark->m_interval;
+	}
+
+	// When user press outside mark, it is NULL.
+	// And Release is always after Press (what about release mouse outside window?)
+	if ( m_mark_selected && m_mark_dragging )
+	{
+		int dragcoord = (_event->y() - m_mark_pressoffset);
+		//unsigned addition = std::max<int>(0, _event->y() - (int)m_mark_pressoffset);
+		//addition = std::min<int>( height() - 10, addition);
+
+		size_t mark_pos_ms = (m_offset + dragcoord)* m_timeconst;
+		//unsigned mark_len_ms = m_marks_gui[ m_mark_selected ].m_size * m_timeconst;
+
+		// Send new data to MarksLn object.
+		m_owner->getController()->getProcessor()->getMarks(m_id_media)->moveMark( m_id_marks, m_mark_selected->m_mark->m_pos, mark_pos_ms, 1 );
+		LOGPLACE
+		this->marksChanged();
+	}
+
+	m_mark_dragging = false;
+	this->update();
+	// We don't change any "selected" variables here, because selection is persist when
+	// user releases mouse button.
+}
+
+void WidgetTextTrack::mouseDoubleClickEvent ( QMouseEvent * _event )
+{
+	if ( ! m_owner )
+		return;
+
+	MarkGUI *mark_dclick = __detectMarkHover( 0, _event->y() );
+	if ( mark_dclick )
+	{
+		if (_event->x() > MARK_TEXT_MARGIN_LEFT)
+			_startEditingMark( mark_dclick );
+	}
+	else
+	{
+		// Create new mark:
+		if ( _event->button() == Qt::LeftButton)
+		{
+			unsigned ms_curr = (m_offset + _event->y())* m_timeconst;
+			//std::stringstream SS;
+
+			//m_marks->addMark( m_id, ms_curr, 1, "mark" );
+			Mark *m = m_owner->getController( )->getProcessor( )->getMarks( m_id_media )->addMark( m_id_marks, ms_curr, 1, false, NULL );
+			LOGCOUT("Mark created?")
+			LOGVAR1((void*)m )
+
+			if ( m )
+			{
+				// When we read this mark in "marksChanged()", we open text editor for it.
+				// This means, it is a new mark and must be edited.
+				// Blyad, kak hitro... Iobnutsya mozhno.
+				m_new_mark_id = m;
+				this->marksChanged();
+			}
+		}
+	}
+}
+
+void WidgetTextTrack::keyPressEvent(QKeyEvent *_event)
+{
+	switch ( _event->key() )
+	{
+	default:
+		QWidget::keyPressEvent( _event );
+		break;
+	case Qt::Key_F2:
+		if ( m_mark_selected )
+			_startEditingMark( m_mark_selected );
+		break;
+	case Qt::Key_Delete:
+		// Delete selected mark.
+		slotMarkDelete();
+		break;
+	}
+}
+
+
+//
+// PRIVATE
+//
+
+MarkGUI* WidgetTextTrack::__detectMarkHover(int x, int y)
+{
+	size_t len = m_marks_gui_mem.size();
+	for ( size_t i = 0; i < len && m_marks_gui_mem[i]->m_used; ++i )
+	{
+		if ( y >= (int)m_marks_gui_mem[i]->m_coord && y <= (int)(m_marks_gui_mem[i]->m_coord + m_marks_gui_mem[i]->m_size) )
+		{
+			return m_marks_gui_mem[i];
+		}
+	}
+	return NULL;
+}
+
+void WidgetTextTrack::_startEditingMark( MarkGUI* _mark )
+{
+	m_mark_edited = _mark;
+
+	LOGVAR2("_startEditingMark", (void*)_mark->m_mark)
+
+	unsigned mark_size = _mark->m_size;
+	if ( mark_size < SIZE_MIN_MARK )
+		mark_size = SIZE_MIN_MARK;
+
+	m_text_edit -> setText( QString().fromUtf8(_mark->m_mark->m_text.c_str()) );
+	m_text_edit -> move( 1, _mark->m_coord );
+	m_text_edit -> resize( width() - 2, mark_size * 2 );
+
+	m_text_edit -> show();
+	m_text_edit -> setFocus();
+}
+
+
+//
+// SLOTS
+//
+
+void WidgetTextTrack::slotLayerDelete()
+{
+	if ( m_owner )
+	{
+		m_owner->getController()->getProcessor()->getMarks(m_id_media)->delTrack( m_id_marks );
+		this->marksChanged();
+	}
+}
+
+void WidgetTextTrack::slotMarkDelete()
+{
+	if ( ! m_mark_selected)
+		return;
+
+	//m_marks_gui[m_mark_selected].m_mark->m_valid = false;
+	m_owner->getController()->getProcessor()->getMarks(m_id_media)->delMark( m_id_marks, m_mark_selected->m_mark->m_pos );
+	LOGPLACE
+	m_mark_selected = NULL;
+
+	setOffset( m_offset );
+	this->marksChanged();
+}
+
+void WidgetTextTrack::slotEditPressEnter()
+{
+	if ( ! m_mark_edited )
+		return;
+
+	m_text_edit -> hide();
+	m_text_edit -> clearFocus();
+
+	LOGPLACE
+	LOGVAR1( (void*)m_mark_edited->m_mark )
+	// Assign text to mark.
+	m_mark_edited->m_mark->m_text = m_text_edit->toPlainText().toUtf8().data();
+
+	// 1. Calculate size.
+	fixSize( m_mark_edited );
+	m_mark_edited = NULL;
+
+	this->update();
+}
+
+
+
+
+WidgetTextMarks::WidgetTextMarks()
+	: m_owner(NULL)
+	, m_splitter (NULL)
+	, m_track_id(0)
+	, m_offset(0)
+	, m_timeconst(0)
+	, m_layer_id_next(0)
+{
+}
+
+WidgetTextMarks::~WidgetTextMarks()
+{
+	delete m_splitter;
+
+//	ListLayers::iterator it, ite;
+//	it = m_layers.begin();
+//	ite = m_layers.end();
+//
+//	for ( ; it != ite; ++it )
+//	{
+//		delete *it;
+//	}
+}
+
+void WidgetTextMarks::setTrackId(unsigned _track_id)
+{
+	m_track_id = _track_id;
+
+	// TODO: Repaint the widget using new track_id?
+}
+
+void WidgetTextMarks::setTimeConst(float _c)
+{
+	m_timeconst = _c;
+	ListLayers::iterator it, ite;
+	it = m_layers.begin();
+	ite = m_layers.end();
+	for ( ; it != ite; ++it )
+	{
+		(*it)->setTimeConst( _c );
+	}
+}
+
+void WidgetTextMarks::setOffset(size_t _off)
+{
+	if ( _off < 0 )
+		return;
+
+	ListLayers::iterator it, ite;
+	it = m_layers.begin();
+	ite = m_layers.end();
+
+	for ( ; it != ite; ++it )
+	{
+		(*it)->setOffset( _off );
+	}
+	m_offset = _off;
+
+	this->update();
+}
+
+
+
+void WidgetTextMarks::marksChanged( )
+{
+	if ( ! m_owner )
+		return;
+
+	size_t lr_size = m_owner->getController()->getProcessor()->getMarks(m_track_id)->sizeTracks();
+
+	if ( m_layers.size() != lr_size )
+	{
+		// Delete all layers:
+//		ListLayers::iterator it, ite;
+//		it = m_layers.begin();
+//		ite = m_layers.end();
+//		for ( ; it != ite; ++it )
+//			delete *it;
+
+		// Layers will be deleted by dying QSplitter.
+		if ( m_splitter )
+			delete m_splitter;
+
+		m_splitter = new QSplitter(this);
+
+		m_layers.clear();
+
+		// Load layers again:
+		//LOGCOUT( m_track_id )
+		for ( m_layer_id_next = 0; m_layer_id_next < lr_size; ++m_layer_id_next)
+		{
+			m_layers.push_back ( new WidgetTextTrack() );
+			m_layers.back()->setOwner( m_owner );
+			m_layers.back()->setTrackId( m_track_id );
+			m_layers.back()->setLayerId( m_layer_id_next );
+			m_layers.back()->setTimeConst( m_timeconst );
+			m_layers.back()->setOffset( m_offset );
+			m_splitter->addWidget( m_layers.back() );
+		}
+		m_splitter->move(0, 0);
+		m_splitter->show();
+	}
+
+	// Force resize event to give splitter size > 0
+	resize(width()+1, height());
+	resize(width()-1, height());
+
+	// Refresh all layers!
+	ListLayers::iterator it, ite;
+	it = m_layers.begin();
+	ite = m_layers.end();
+
+	for ( ; it != ite; ++it )
+	{
+		(*it)->marksChanged();
+		(*it)->update();
+	}
+}
+
+// DELME
+//void WidgetTextMarks::setCursorPos(size_t _pos)
+//{
+//	ListLayers::iterator it, ite;
+//	it = m_layers.begin();
+//	ite = m_layers.end();
+//
+//	for ( ; it != ite; ++it )
+//	{
+//		(*it)->setCursorPos( _pos );
+//		(*it)->update();
+//	}
+//}
+
+//
+// PROTECTED
+//
+
+void WidgetTextMarks::resizeEvent(QResizeEvent *_event)
+{
+	if ( ! m_splitter )
+		return;
+
+		m_splitter->resize(_event->size().width(), _event->size().height());
+}
+
+//
+// S L O T S
+//
+
+void WidgetTextMarks::slotDelete()
+{
+	ListLayers::iterator it, ite;
+	it = m_layers.begin();
+	ite = m_layers.end();
+
+	for ( ; it != ite; ++it )
+	{
+		(*it)->slotMarkDelete();
+	}
+}
+

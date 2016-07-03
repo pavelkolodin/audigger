@@ -1,0 +1,68 @@
+/*
+ *  pavelkolodin@gmail.com
+ */
+
+#ifndef _Marks_H_
+#define _Marks_H_
+
+#include <list>
+#include <map>
+#include <vector>
+#include <string>
+
+/*
+ * \brief Mark internal representation.
+ */
+class Mark
+{
+public:
+	unsigned m_id;
+	unsigned int m_begin;
+	unsigned int m_len;
+	std::string m_text;
+	bool m_valid;
+};
+
+/// \brief Marks is responsible for managing marks, saving, loading.
+class Marks
+{		
+	public:
+		Marks ( );
+		virtual ~Marks ( );
+		bool SaveXML (const char* _filename );
+		bool SaveXML ( );
+		bool LoadXML (const char* _filename );
+
+		unsigned addTrack();
+		void delTrack(unsigned _track);
+
+		Mark* addMark(unsigned _track, unsigned long _begin, unsigned long _len, const char *_text);
+
+		// Change mark's position.
+		bool moveMark(unsigned _track, unsigned _oldbegin, unsigned long _begin, unsigned long _len);
+		void delMark(unsigned _id);
+		size_t sizeTracks();
+		size_t loadMarks(unsigned _track, unsigned long _from, unsigned long _to, Mark** _mem, size_t _limit);
+
+	private:
+        Marks ( const Marks& _other ) { }
+        Marks& operator= ( const Marks& _other ) { return *this; }
+
+        /// \brief Forget everything, free memory.
+        void _clear();
+
+        std::list < Mark > m_marks_mem;
+        typedef std::map < unsigned long, Mark* > MapMarks;
+
+        typedef std::vector< MapMarks* > VectorTracks;	// tracks
+        VectorTracks m_marks_begin;
+        //VectorLayers m_marks_end;
+		MapMarks m_marks_id;
+
+        unsigned m_next_id;
+
+		std::string m_filename_XML; // filename, the XML was loaded from or saved to.
+};
+
+#endif
+

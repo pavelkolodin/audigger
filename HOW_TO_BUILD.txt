@@ -1,0 +1,15 @@
+
+
+Requirements.
+
+1. CMake ( http://www.cmake.org/ )
+2. Boost 1.48.0 (system thread random chrono filesystem)
+3. Qt >= 4.7.0
+
+
+How to build.
+
+1. (set QTDIR, BOOST_ROOT environment variables)
+2. cmake marker-src/marker -G <preferred generator>
+3. make or open Visual Studio project.
+

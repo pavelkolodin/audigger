@@ -1,0 +1,161 @@
+/*
+ *  pavelkolodin@gmail.com
+ */
+
+#ifndef _WidgetTextMarks_H_
+#define _WidgetTextMarks_H_
+
+#include <QtGui>
+
+#include "IMarksOperator.h"
+
+struct MarkGUI
+{
+	MarkGUI()
+	: m_coord(0)
+	, m_size(0)
+	, m_mark(0)
+	, m_used(0) {}
+	unsigned m_coord; // one-dimentional coordinate
+	unsigned m_size; // one-dimentional size
+	Mark* m_mark;
+	bool m_used;
+};
+
+class QTextEditEnter : public QTextEdit
+{
+	Q_OBJECT
+public:
+	//QTextEditEnter() { }
+	QTextEditEnter( QWidget *_parent ) : QTextEdit(_parent)
+	{
+		this->setFrameStyle( QFrame::Sunken ); // Sunken!
+	}
+
+protected:
+	virtual void keyPressEvent(QKeyEvent * event);
+	virtual void paintEvent(QPaintEvent *_event)
+	{
+		QTextEdit::paintEvent( _event );
+		QPainter pnt( viewport() );
+		pnt.setPen( QColor( 0, 0, 0, 0xff ));
+		pnt.drawRect( 0, 0, width()-1, height()-1);
+	}
+
+	signals:
+		void signalPressEnter();
+};
+
+class Controller;
+class Marks;
+class WidgetTrack;
+
+/// \brief A widget responsible for single marks track (layer)
+/// Many objects of this type are used in multi-layer
+class WidgetTextTrack : public QWidget, public IMarksOperator
+{
+	Q_OBJECT
+public:
+	WidgetTextTrack();
+	virtual ~WidgetTextTrack();
+
+	void setTrackId( unsigned _track_id );
+	void fixSize( MarkGUI *_mg );
+	void setLayerId( unsigned _id ) { m_id_marks = _id; }
+	void setOwner( WidgetTrack *_o) { m_owner = _o; }
+
+	// IMarksOperator:
+	virtual void marksChanged( );
+	//virtual void setCursorPos(size_t _pos);
+	//virtual size_t getCursorPos() { return 0; }
+	//virtual void setTimeConst(double _c) { m_timeconst = _c; }
+	virtual void setOffset(size_t _off); // offset to display marks from.
+	virtual size_t getOffset() { return m_offset; }
+
+protected:
+	virtual void resizeEvent(QResizeEvent *_event);
+	virtual void paintEvent(QPaintEvent *);
+	virtual void mouseMoveEvent ( QMouseEvent * _event );
+	virtual void mousePressEvent ( QMouseEvent * _event );
+	virtual void mouseReleaseEvent( QMouseEvent *_event );
+	virtual void mouseDoubleClickEvent ( QMouseEvent *_event );
+	virtual void keyPressEvent(QKeyEvent *_event);
+
+private:
+	MarkGUI* __detectMarkHover(int x, int y);
+	void _startEditingMark(MarkGUI *);
+	void _freeAllMarkGUI();
+	MarkGUI* _allocMarkGUI();
+
+public slots:
+	void slotLayerDelete();
+	void slotMarkDelete();
+private slots:
+	void slotEditPressEnter();
+
+private:
+	WidgetTrack *m_owner;
+	Mark **m_marks_mem;
+	QTextEditEnter *m_text_edit;
+	unsigned m_id_media;		// media track!
+	unsigned m_id_marks;				// is of track (track inside this current marks object).
+	size_t m_offset;
+	float m_timeconst;
+	MarkGUI *m_mark_edited;
+	MarkGUI *m_mark_selected;		// index
+	MarkGUI *m_mark_pressedswitcher;		// who own the pressed switcher?
+	int m_mark_pressoffset;
+	int m_mouse_press_coord;
+	bool m_mark_dragging; // moving mark by mouse
+
+	QPixmap *m_pixmap_point;
+	QPixmap *m_pixmap_interval;
+
+
+	std::vector <MarkGUI*> m_marks_gui_mem;
+	//std::vector < MarkGUI > m_marks_gui;
+	Mark *m_new_mark_id;
+};
+
+class WidgetTextMarks : public QWidget, public IMarksOperator
+{
+	Q_OBJECT
+
+public:
+	typedef std::list<WidgetTextTrack *> ListLayers;
+	// We should set some pointer to an external object here
+	// that can give marks data to this widget.
+	WidgetTextMarks();
+	virtual ~WidgetTextMarks();
+	void setOwner( WidgetTrack *_o) { m_owner = _o; }
+	void setTrackId( unsigned _track_id );
+
+	// IMarksOperator:
+	virtual void marksChanged( );
+	//virtual void setCursorPos( size_t _pos );
+	//virtual size_t getCursorPos() { return 0; }
+	virtual void setTimeConst(float _c);
+	virtual void setOffset(size_t _off); 	// offset to display marks from.
+	virtual size_t getOffset() { return m_offset; }
+	//Intel SSD 510
+	//size_t showCursorPos( size_t _pos ) { return 0; }
+
+protected:
+	void resizeEvent(QResizeEvent *_event);
+
+public slots:
+	void slotDelete();
+
+private:
+	WidgetTrack *m_owner;
+	Marks *m_marks;
+	QSplitter *m_splitter;
+	unsigned m_track_id;
+	size_t m_offset;
+	double m_timeconst;
+	unsigned m_layer_id_next;
+	ListLayers m_layers;
+};
+
+#endif
+
